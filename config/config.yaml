@@ -1,0 +1,62 @@
+automation:
+  action_wait_ms: 2000
+  check_login_interval_seconds: 5
+  download_end_time: 09:30
+  download_start_time: 08:30
+  headless: false
+  retry_count: 3
+  timeout_ms: 30000
+campaign:
+  name: SADHAN Poster
+email:
+  recipients:
+  - vishal.singh2@midlandmicrofin.com
+  sender: vishudv125@gmail.com
+  smtp_password: ""
+  smtp_port: 587
+  smtp_server: smtp.gmail.com
+  smtp_username: vishudv125@gmail.com
+  use_tls: true
+paths:
+  browser_profile_dir: browser_profile
+  checkpoint_dir: checkpoints
+  download_dir: downloads
+  email_templates_dir: templates/emails
+  excel_path: config/devices.xlsx
+  log_dir: logs
+  screenshot_dir: screenshots
+portal:
+  email: vishal.singh2@midlandmicrofin.com
+  password: ""
+  playback_url: https://signedge.in.panasonic.com/customer/midlandmicrofinltd/report/content-playback
+  url: https://signedge.in.panasonic.com/customer/midlandmicrofinltd/login
+scheduler:
+  enabled: true
+  run_time: 02:00
+  timezone: Asia/Kolkata
+selectors:
+  download:
+    modal_close: button.btn-close, button[aria-label='Close'], .modal-header button
+    modal_container: .modal, div[role='dialog'], div.modal-dialog
+    modal_download_all: button:has-text('Download All')
+    modal_download_btn: button:has-text('Download')
+    no_data_indicator: text=No Results Found, text=No data found, .alert-warning
+    results_container: .table-responsive
+    row_download_icon: a[download], a svg, button:has(svg), td:last-child a, td:last-child
+      button
+    row_selector: table tbody tr
+  login:
+    dashboard_indicator: a[href*='logout'], .user-profile, .dashboard
+    email_input: input#floatingInput1
+    password_input: input#floatingInput2
+    submit_button: button:has-text('LOGIN')
+  navigation:
+    playback_link: text=Content Playback
+    reports_menu: li.nav-item:has-text('Reports') .nav-link
+  playback:
+    campaign_dropdown: input#react-select-5-input
+    date_end_input: input[placeholder='To Date*']
+    date_start_input: input[placeholder='From Date*']
+    device_dropdown: input#react-select-2-input
+    search_button: button:has-text('Search'), input[type='button'][value='Search'],
+      input[type='submit'][value='Search']

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ff9800; border-radius: 5px; }
+        .header { background-color: #ff9800; color: white; padding: 15px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { padding: 20px; }
+        .footer { font-size: 0.8em; color: #777777; text-align: center; margin-top: 20px; border-top: 1px solid #dddddd; padding-top: 10px; }
+        .btn { display: inline-block; padding: 10px 20px; background-color: #ff9800; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 15px; }
+        .warning { color: #d32f2f; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Manual Intervention Required (Google reCAPTCHA)</h2>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p class="warning">The Panasonic Signedge screenshot downloader automation requires manual action to proceed.</p>
+            <p>The automation has hit a Google reCAPTCHA check or requires a fresh login. It is currently paused and waiting for you.</p>
+            <h3>Instructions:</h3>
+            <ol>
+                <li>Open the VM where the automation is running.</li>
+                <li>You will see a non-headless Chrome window open at the login screen.</li>
+                <li>Fill in the credentials if not populated, and solve the Google reCAPTCHA challenge.</li>
+                <li>Click <strong>Login</strong>.</li>
+                <li>Once you are successfully logged in and reach the dashboard page, <strong>the automation will automatically detect the success, close/hide the browser profile, and resume downloads in the background.</strong></li>
+            </ol>
+            <p><strong>Reason:</strong> {{ reason }}</p>
+            <div style="text-align: center;">
+                <a href="{{ portal_url }}" class="btn" target="_blank">Go to Signedge Portal</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>This is an automated message. Please do not reply.</p>
+        </div>
+    </div>
+</body>
+</html>
