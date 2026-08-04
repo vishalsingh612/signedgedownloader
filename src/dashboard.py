@@ -3,6 +3,7 @@ import json
 import re
 import csv
 import yaml
+import threading
 from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -16,6 +17,27 @@ DEVICES_EXCEL_PATH = WORKSPACE_DIR / "config" / "devices.xlsx"
 ENV_PATH = WORKSPACE_DIR / ".env"
 
 PORT = int(os.environ.get("PORT", 8000))
+
+# Background manual job runner state
+job_running = False
+job_status = "idle"
+
+def run_manual_job_thread():
+    global job_running, job_status
+    job_running = True
+    job_status = "running"
+    import sys
+    import subprocess
+    try:
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [MANUAL] Starting manual run...")
+        subprocess.run([sys.executable, "-m", "src.main", "--now"], check=True)
+        job_status = "completed"
+        print("[MANUAL] Manual run completed successfully.")
+    except Exception as e:
+        job_status = f"failed: {e}"
+        print(f"[MANUAL] Manual run failed: {e}")
+    finally:
+        job_running = False
 
 def read_env_vars():
     env_vars = {"PORTAL_EMAIL": "", "PORTAL_PASSWORD": "", "SMTP_PASSWORD": ""}
@@ -276,6 +298,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(devices).encode("utf-8"))
             except Exception as e:
                 self.send_error(500, f"Failed to load devices: {e}")
+        elif self.path == "/api/job-status":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"running": job_running, "status": job_status}).encode("utf-8"))
         else:
             self.send_error(404, "Not Found")
 
@@ -349,6 +376,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 except Exception as ce:
                     print(f"Error reloading config in memory: {ce}")
                 
+                try:
+                    start_background_scheduler()
+                except Exception as se:
+                    print(f"Error restarting background scheduler: {se}")
+                
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -418,6 +450,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"status": "success", "message": "All execution history, checkpoints, and logs have been reset successfully."}).encode("utf-8"))
             except Exception as e:
                 self.send_error(500, f"Failed to clean history: {e}")
+        elif self.path == "/api/run-now":
+            global job_running, job_status
+            if job_running:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "message": "A downloader job is already running."}).encode("utf-8"))
+                return
+            
+            threading.Thread(target=run_manual_job_thread, daemon=True).start()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "success", "message": "Manual run triggered successfully."}).encode("utf-8"))
         else:
             self.send_error(404, "Not Found")
 
@@ -1022,9 +1068,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <h1>Panasonic Signedge Downloader</h1>
                 <p>Management & Monitoring Portal</p>
             </div>
-            <div class="status-badge">
-                <span class="status-dot"></span>
-                <span>Active Scheduler</span>
+            <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <button id="run-now-btn" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="triggerManualRun()">
+                    ⚡ Run Downloader Now
+                </button>
+                <div class="status-badge">
+                    <span id="scheduler-status-dot" class="status-dot"></span>
+                    <span id="scheduler-status-text">Active Scheduler</span>
+                </div>
             </div>
         </header>
 
@@ -1560,16 +1611,150 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 .replace(/'/g, "&#039;");
         }
 
-        // Initialize dashboard
+        async function triggerManualRun() {
+            const btn = document.getElementById('run-now-btn');
+            if (btn.disabled) return;
+            
+            if (!confirm('Are you sure you want to trigger the daily screenshot downloader manually right now?')) {
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.innerText = '⏳ Triggering...';
+            
+            try {
+                const response = await fetch('/api/run-now', { method: 'POST' });
+                const res = await response.json();
+                if (res.status === 'success') {
+                    showToast('Manual run triggered in the background.', 'success');
+                    pollJobStatus();
+                } else {
+                    showToast(res.message || 'Failed to trigger job.', 'danger');
+                    btn.disabled = false;
+                    btn.innerText = '⚡ Run Downloader Now';
+                }
+            } catch (err) {
+                showToast(`Error: ${err}`, 'danger');
+                btn.disabled = false;
+                btn.innerText = '⚡ Run Downloader Now';
+            }
+        }
+
+        async function pollJobStatus() {
+            const btn = document.getElementById('run-now-btn');
+            const schedulerDot = document.getElementById('scheduler-status-dot');
+            const schedulerText = document.getElementById('scheduler-status-text');
+            if (!btn || !schedulerDot || !schedulerText) return;
+            
+            try {
+                const response = await fetch('/api/job-status');
+                const data = await response.json();
+                
+                if (data.running) {
+                    btn.disabled = true;
+                    btn.innerText = '⏳ Downloader Job Running...';
+                    btn.style.background = 'var(--color-warn)';
+                    btn.style.color = '#000';
+                    
+                    schedulerDot.style.backgroundColor = 'var(--color-warn)';
+                    schedulerText.innerText = 'Job In Progress';
+                    
+                    // Poll again in 3 seconds
+                    setTimeout(pollJobStatus, 3000);
+                } else {
+                    btn.disabled = false;
+                    btn.innerText = '⚡ Run Downloader Now';
+                    btn.style.background = '';
+                    btn.style.color = '';
+                    
+                    schedulerDot.style.backgroundColor = '';
+                    schedulerText.innerText = 'Active Scheduler';
+                }
+            } catch (err) {
+                console.error('Error polling job status:', err);
+            }
+        }
+
+        // Initialize dashboard and poll status
         fetchStats();
+        pollJobStatus();
     </script>
 </body>
 </html>
 """
 
+class SafeHTTPServer(HTTPServer):
+    def handle_error(self, request, client_address):
+        # Ignore common client-closed connection socket exceptions to prevent terminal clutter
+        import sys
+        exc_type, exc_value, _ = sys.exc_info()
+        if exc_type in (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            return
+        super().handle_error(request, client_address)
+
+global_scheduler = None
+
+def start_background_scheduler():
+    global global_scheduler
+    
+    # Import inside function to avoid circular dependency
+    from src.config import config as app_config
+    
+    # Stop existing scheduler if running
+    if global_scheduler and global_scheduler.running:
+        try:
+            print("[SCHEDULER] Stopping existing background scheduler...")
+            global_scheduler.shutdown()
+        except Exception as e:
+            print(f"[SCHEDULER] Error shutting down scheduler: {e}")
+            
+    if not app_config.scheduler_enabled:
+        print("[SCHEDULER] Scheduler is disabled in configuration.")
+        return
+
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        import sys
+        import subprocess
+
+        # Parse run_time HH:MM
+        try:
+            hour, minute = map(int, app_config.scheduler_run_time.split(":"))
+        except Exception:
+            hour, minute = 2, 0
+
+        def trigger_job():
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SCHEDULER] Triggering downloader job...")
+            try:
+                subprocess.run([sys.executable, "-m", "src.main", "--now"], check=True)
+                print("[SCHEDULER] Downloader job completed successfully.")
+            except Exception as e:
+                print(f"[SCHEDULER] Downloader job failed: {e}")
+
+        global_scheduler = BackgroundScheduler(timezone=app_config.scheduler_timezone)
+        trigger = CronTrigger(hour=hour, minute=minute)
+        global_scheduler.add_job(
+            trigger_job,
+            trigger=trigger,
+            id="daily_downloader_job",
+            name="Daily Campaign Screenshot Downloader",
+            replace_existing=True
+        )
+        global_scheduler.start()
+        print(f"==================================================================")
+        print(f"🚀 Background scheduler is running live!")
+        print(f"📅 Daily download scheduled at: {app_config.scheduler_run_time} ({app_config.scheduler_timezone})")
+        print(f"==================================================================")
+    except Exception as e:
+        print(f"[SCHEDULER] Error starting background scheduler: {e}")
+
 def run_server():
+    # Start background scheduler
+    start_background_scheduler()
+    
     server_address = ('', PORT)
-    httpd = HTTPServer(server_address, DashboardHandler)
+    httpd = SafeHTTPServer(server_address, DashboardHandler)
     print(f"==================================================================")
     print(f"🚀 Dashboard is running live on: http://localhost:{PORT}")
     print(f"📌 Accessible from your browser. Press Ctrl+C to terminate.")
@@ -1578,6 +1763,8 @@ def run_server():
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping dashboard server...")
+        if global_scheduler and global_scheduler.running:
+            global_scheduler.shutdown()
         httpd.server_close()
 
 if __name__ == "__main__":
