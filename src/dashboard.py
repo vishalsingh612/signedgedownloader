@@ -4,8 +4,9 @@ import re
 import csv
 import yaml
 import threading
+import pandas as pd
 from datetime import datetime, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
 # Paths
@@ -165,7 +166,6 @@ def get_stats_data():
     device_count = 0
     if DEVICES_EXCEL_PATH.exists():
         try:
-            import pandas as pd
             df = pd.read_excel(DEVICES_EXCEL_PATH)
             device_count = len(df["Device Name"].dropna().unique())
         except Exception:
@@ -281,7 +281,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 
         elif self.path == "/api/devices":
             try:
-                import pandas as pd
                 devices = []
                 if DEVICES_EXCEL_PATH.exists():
                     df = pd.read_excel(DEVICES_EXCEL_PATH)
@@ -390,7 +389,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 
         elif self.path == "/api/devices":
             try:
-                import pandas as pd
                 payload = json.loads(post_data.decode("utf-8"))
                 
                 rows = []
@@ -1683,7 +1681,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-class SafeHTTPServer(HTTPServer):
+class SafeHTTPServer(ThreadingHTTPServer):
     def handle_error(self, request, client_address):
         # Ignore common client-closed connection socket exceptions to prevent terminal clutter
         import sys
