@@ -173,7 +173,13 @@ def click_react_calendar_date(page: Page, input_sel: str, target_date: datetime)
         except Exception:
             pass
 
-        label = page.locator(".react-calendar__navigation__label__labelText--from").inner_text().strip()
+        label_loc = page.locator(
+            ".react-calendar__navigation__label__labelText, "
+            ".react-calendar__navigation__label__labelText--from, "
+            ".react-calendar__navigation__label > span, "
+            ".react-calendar__navigation__label"
+        ).first
+        label = label_loc.inner_text(timeout=5000).strip()
         logger.info(f"Calendar currently showing: '{label}', target: '{target_label}'")
         if label == target_label:
             break
