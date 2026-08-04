@@ -1638,6 +1638,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
         }
 
+        let wasRunning = false;
+
         async function pollJobStatus() {
             const btn = document.getElementById('run-now-btn');
             const schedulerDot = document.getElementById('scheduler-status-dot');
@@ -1657,8 +1659,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     schedulerDot.style.backgroundColor = 'var(--color-warn)';
                     schedulerText.innerText = 'Job In Progress';
                     
-                    // Poll again in 3 seconds
-                    setTimeout(pollJobStatus, 3000);
+                    wasRunning = true;
+                    // Poll faster when job is active
+                    setTimeout(pollJobStatus, 2000);
                 } else {
                     btn.disabled = false;
                     btn.innerText = '⚡ Run Downloader Now';
@@ -1667,15 +1670,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     
                     schedulerDot.style.backgroundColor = '';
                     schedulerText.innerText = 'Active Scheduler';
+                    
+                    // If a running job just finished, auto-reload the stats to show new logs/results!
+                    if (wasRunning) {
+                        wasRunning = false;
+                        showToast('Downloader job finished. Refreshing data...', 'success');
+                        fetchStats();
+                    }
+                    
+                    // Poll slower when idle
+                    setTimeout(pollJobStatus, 5000);
                 }
             } catch (err) {
                 console.error('Error polling job status:', err);
+                setTimeout(pollJobStatus, 5000);
             }
         }
 
-        // Initialize dashboard and poll status
+        // Initialize dashboard and start continuous status polling
         fetchStats();
         pollJobStatus();
+        
+        // Auto-refresh execution analytics stats every 30 seconds
+        setInterval(fetchStats, 30000);
     </script>
 </body>
 </html>
