@@ -1760,6 +1760,9 @@ def start_background_scheduler():
         print(f"==================================================================")
         print(f"🚀 Background scheduler is running live!")
         print(f"📅 Daily download scheduled at: {app_config.scheduler_run_time} ({app_config.scheduler_timezone})")
+        print(f"⌚ Current Server System Time (Local): {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        for job in global_scheduler.get_jobs():
+            print(f"⏰ Next scheduled run: {job.next_run_time}")
         print(f"==================================================================")
     except Exception as e:
         print(f"[SCHEDULER] Error starting background scheduler: {e}")
