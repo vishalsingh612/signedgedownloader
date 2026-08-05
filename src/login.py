@@ -7,12 +7,13 @@ from src.notifier import notifier
 def is_logged_in(page: Page) -> bool:
     """Checks if the user is currently logged in by looking for dashboard elements."""
     dashboard_sel = config.selectors["login"]["dashboard_indicator"]
+    playback_sel = config.selectors["playback"]["date_start_input"]
     try:
         # Give a small buffer for page to stabilize
         page.wait_for_timeout(2000)
         
-        # Check if dashboard selector is visible
-        if page.locator(dashboard_sel).is_visible():
+        # Check if dashboard selector or playback inputs are visible
+        if page.locator(dashboard_sel).is_visible() or page.locator(playback_sel).is_visible():
             return True
             
         # Fallback URL check
@@ -38,16 +39,22 @@ def login(page: Page) -> bool:
     """
     playback_url = config.portal_playback_url or config.portal_url.replace("/login", "/report/content-playback")
     logger.info(f"Checking session by navigating directly to playback page: {playback_url}")
-    page.goto(playback_url)
-    page.wait_for_timeout(3000)  # Wait for redirects to settle
+    try:
+        page.goto(playback_url)
+        # Wait up to 10 seconds for either the login form or the playback date picker input to appear
+        email_sel = config.selectors["login"]["email_input"]
+        date_sel = config.selectors["playback"]["date_start_input"]
+        page.wait_for_selector(f"{email_sel}, {date_sel}", timeout=10000)
+    except Exception:
+        pass
     
-    # If the login email input is NOT visible and we are on a dashboard/report page, we are logged in!
     email_sel = config.selectors["login"]["email_input"]
-    if not page.locator(email_sel).is_visible():
-        url_lower = page.url.lower()
-        if "login" not in url_lower and "404" not in url_lower:
-            logger.info("Existing session detected. Login skipped.")
-            return True
+    date_sel = config.selectors["playback"]["date_start_input"]
+    
+    # If the date input is visible, we are logged in and on the correct page!
+    if page.locator(date_sel).is_visible():
+        logger.info("Existing session detected. Login skipped.")
+        return True
 
     logger.info("No active session detected. Attempting login page navigation...")
     page.goto(config.portal_url)

@@ -125,6 +125,48 @@ def select_react_select_option(page, input_selector: str, option_text: str):
     page.wait_for_timeout(1000)
 
 
+def set_date_input(page: Page, input_sel: str, target_date: datetime) -> bool:
+    """
+    Sets the date input directly using a React-safe JavaScript value setter.
+    Fires input, change, and blur events so React registers the update.
+    Returns True if successfully set and verified.
+    """
+    date_str = target_date.strftime("%d/%m/%Y")  # e.g. "04/08/2026"
+    logger.info(f"Attempting to set date input '{input_sel}' directly via JS: {date_str}")
+    try:
+        # Wait for selector to exist in DOM (timeout 5s)
+        page.wait_for_selector(input_sel, state="attached", timeout=5000)
+        
+        # Use standard React-safe value setter
+        page.locator(input_sel).evaluate(
+            """(el, val) => {
+                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                if (setter) {
+                    setter.call(el, val);
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    el.dispatchEvent(new Event('blur', { bubbles: true }));
+                } else {
+                    el.value = val;
+                }
+            }""",
+            date_str
+        )
+        page.wait_for_timeout(500)
+        
+        # Verify if value was updated
+        current_val = page.locator(input_sel).input_value()
+        if current_val == date_str:
+            logger.info(f"Successfully set date value to '{current_val}' directly via JS.")
+            return True
+        else:
+            logger.warning(f"Direct set value verification failed. Expected '{date_str}', got '{current_val}'.")
+    except Exception as e:
+        logger.warning(f"Failed to set date directly via JS: {e}")
+        
+    return False
+
+
 def click_react_calendar_date(page: Page, input_sel: str, target_date: datetime):
     """
     Opens the react-calendar popup for the given date input and clicks the target date.
@@ -254,9 +296,14 @@ def select_search_filters(page: Page, campaign_name: str) -> str:
     campaign_sel = config.selectors["playback"]["campaign_dropdown"]
 
     try:
-        # Use the react-calendar click strategy for both date inputs
-        click_react_calendar_date(page, start_date_sel, target_date)
-        click_react_calendar_date(page, end_date_sel, target_date)
+        # Try direct JS value insertion first, fallback to calendar UI if it fails
+        if not set_date_input(page, start_date_sel, target_date):
+            logger.info("Falling back to calendar UI clicking for From Date...")
+            click_react_calendar_date(page, start_date_sel, target_date)
+            
+        if not set_date_input(page, end_date_sel, target_date):
+            logger.info("Falling back to calendar UI clicking for To Date...")
+            click_react_calendar_date(page, end_date_sel, target_date)
 
         # Select Campaign
         select_react_select_option(page, campaign_sel, campaign_name)
