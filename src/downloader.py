@@ -95,7 +95,7 @@ def _download_from_modal(page: Page, device_folder: Path, row_index: int) -> int
 
             if is_xml_error:
                 logger.info(f"  ✓ {filename} saved to {device_folder.name}/ - image not present on portal ({duration:.1f}s)")
-                log_download(device_folder.name, filename, "SUCCESS", duration, "image not present")
+                log_download(device_folder.name, filename, "SKIPPED", duration, "image not present")
             else:
                 logger.info(f"  ✓ {filename} saved to {device_folder.name}/ ({duration:.1f}s)")
                 log_download(device_folder.name, filename, "SUCCESS", duration, f"row={row_index+1} img={btn_idx+1}")

@@ -113,6 +113,9 @@ def get_stats_data():
 
                     if date_part in stats:
                         status = row.get("Status", "").upper()
+                        remarks = row.get("Remarks", "")
+                        if "image not present" in remarks.lower():
+                            status = "SKIPPED"
                         duration = 0.0
                         try:
                             duration = float(row.get("Duration", 0.0))
