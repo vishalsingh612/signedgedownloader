@@ -57,6 +57,11 @@ def navigate_to_content_playback(page: Page):
     if not url:
         url = config.portal_url.replace("/login", "/report/content-playback")
 
+    current_url = page.url.lower()
+    if "playback" in current_url:
+        logger.info("Already on Content Playback page. Skipping redundant navigation.")
+        return
+
     logger.info(f"Navigating directly to Content Playback URL: {url}")
 
     try:

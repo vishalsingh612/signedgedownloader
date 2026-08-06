@@ -41,6 +41,9 @@ def login(page: Page) -> bool:
     logger.info(f"Checking session by navigating directly to playback page: {playback_url}")
     try:
         page.goto(playback_url)
+        # Give a small buffer for redirects/caching to settle
+        page.wait_for_timeout(3000)
+        
         # Wait up to 10 seconds for either the login form or the playback date picker input to appear
         email_sel = config.selectors["login"]["email_input"]
         date_sel = config.selectors["playback"]["date_start_input"]
@@ -48,13 +51,19 @@ def login(page: Page) -> bool:
     except Exception:
         pass
     
+    url_lower = page.url.lower()
     email_sel = config.selectors["login"]["email_input"]
     date_sel = config.selectors["playback"]["date_start_input"]
     
-    # If the date input is visible, we are logged in and on the correct page!
-    if page.locator(date_sel).is_visible():
+    # 1. Check URL explicitly: if it redirected to the login page, we are not logged in!
+    if "login" in url_lower or "404" in url_lower:
+        logger.info("Redirected to login screen. No active session.")
+    # 2. Check if we are on the playback page and the date selector is actually visible
+    elif "playback" in url_lower and page.locator(date_sel).is_visible():
         logger.info("Existing session detected. Login skipped.")
         return True
+    else:
+        logger.info(f"Session verification failed (URL: '{url_lower}', Date Input Visible: {page.locator(date_sel).is_visible()})")
 
     logger.info("No active session detected. Attempting login page navigation...")
     page.goto(config.portal_url)
