@@ -94,14 +94,17 @@ def _download_from_modal(page: Page, device_folder: Path, row_index: int) -> int
                     pass
 
             if is_xml_error:
-                logger.info(f"  ✓ {filename} saved to {device_folder.name}/ - image not present on portal ({duration:.1f}s)")
+                logger.info(f"  ✗ {filename} - image not present on portal ({duration:.1f}s)")
+                try:
+                    save_path.unlink(missing_ok=True)
+                except Exception as ue:
+                    logger.debug(f"Failed to delete XML error file: {ue}")
                 log_download(device_folder.name, filename, "SKIPPED", duration, "image not present")
             else:
                 logger.info(f"  ✓ {filename} saved to {device_folder.name}/ ({duration:.1f}s)")
                 log_download(device_folder.name, filename, "SUCCESS", duration, f"row={row_index+1} img={btn_idx+1}")
-                
-            checkpoint_manager.add_downloaded_image(filename)
-            downloaded += 1
+                checkpoint_manager.add_downloaded_image(filename)
+                downloaded += 1
             page.wait_for_timeout(500)
         except Exception as e:
             duration = time.time() - start_time
