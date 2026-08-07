@@ -8,10 +8,16 @@ def is_logged_in(page: Page) -> bool:
     """Checks if the user is currently logged in by looking for dashboard elements."""
     dashboard_sel = config.selectors["login"]["dashboard_indicator"]
     playback_sel = config.selectors["playback"]["date_start_input"]
+    email_sel = config.selectors["login"]["email_input"]
+    password_sel = config.selectors["login"]["password_input"]
     try:
         # Give a small buffer for page to stabilize
         page.wait_for_timeout(2000)
         
+        # If the login inputs are visible, we are definitely NOT logged in!
+        if page.locator(email_sel).is_visible() or page.locator(password_sel).is_visible():
+            return False
+            
         # Check if dashboard selector or playback inputs are visible
         if page.locator(dashboard_sel).is_visible() or page.locator(playback_sel).is_visible():
             return True
@@ -23,8 +29,7 @@ def is_logged_in(page: Page) -> bool:
             
         if "login" not in url_lower and ("dashboard" in url_lower or "home" in url_lower or "customer" in url_lower or "playback" in url_lower):
             # Verify we aren't still at the login screen
-            login_email_sel = config.selectors["login"]["email_input"]
-            if not page.locator(login_email_sel).is_visible():
+            if not page.locator(email_sel).is_visible():
                 return True
                 
         return False
@@ -53,12 +58,16 @@ def login(page: Page) -> bool:
     
     url_lower = page.url.lower()
     email_sel = config.selectors["login"]["email_input"]
+    password_sel = config.selectors["login"]["password_input"]
     date_sel = config.selectors["playback"]["date_start_input"]
     
-    # 1. Check URL explicitly: if it redirected to the login page, we are not logged in!
-    if "login" in url_lower or "404" in url_lower:
+    # 1. First check: is the page asking for username/password (login fields visible)?
+    if page.locator(email_sel).is_visible() or page.locator(password_sel).is_visible():
+        logger.info("Login form/inputs detected (username/password fields visible). No active session.")
+    # 2. Check URL explicitly: if it redirected to the login page, we are not logged in!
+    elif "login" in url_lower or "404" in url_lower:
         logger.info("Redirected to login screen. No active session.")
-    # 2. Check if we are on the playback page and the date selector is actually visible
+    # 3. Check if we are on the playback page and the date selector is actually visible
     elif "playback" in url_lower and page.locator(date_sel).is_visible():
         logger.info("Existing session detected. Login skipped.")
         return True
