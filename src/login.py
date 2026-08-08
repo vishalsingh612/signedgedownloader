@@ -5,9 +5,8 @@ from src.logger import logger
 from src.notifier import notifier
 
 def is_logged_in(page: Page) -> bool:
-    """Checks if the user is currently logged in by looking for dashboard elements."""
+    """Checks if the user is currently logged in by looking for dashboard/profile elements."""
     dashboard_sel = config.selectors["login"]["dashboard_indicator"]
-    playback_sel = config.selectors["playback"]["date_start_input"]
     email_sel = config.selectors["login"]["email_input"]
     password_sel = config.selectors["login"]["password_input"]
     try:
@@ -18,8 +17,8 @@ def is_logged_in(page: Page) -> bool:
         if page.locator(email_sel).is_visible() or page.locator(password_sel).is_visible():
             return False
             
-        # Check if dashboard selector or playback inputs are visible
-        if page.locator(dashboard_sel).is_visible() or page.locator(playback_sel).is_visible():
+        # Check if dashboard selector (logout link, user profile) is visible
+        if page.locator(dashboard_sel).is_visible():
             return True
             
         # Fallback URL check
@@ -39,47 +38,50 @@ def is_logged_in(page: Page) -> bool:
 def login(page: Page) -> bool:
     """
     Handles logging into the Panasonic Signedge Portal.
-    Detects if session is active by navigating directly to Content Playback page.
-    If session is active, skips login entirely.
+    Detects if session is active by navigating to the login page first.
+    If session is active, the portal redirects to the dashboard, and we skip login.
+    If session is not active, we proceed to fill credentials and log in.
     """
-    playback_url = config.portal_playback_url or config.portal_url.replace("/login", "/report/content-playback")
-    logger.info(f"Checking session by navigating directly to playback page: {playback_url}")
+    login_url = config.portal_url
+    logger.info(f"Checking session by navigating directly to login page: {login_url}")
     try:
-        page.goto(playback_url)
+        page.goto(login_url)
         # Give a small buffer for redirects/caching to settle
         page.wait_for_timeout(3000)
         
-        # Wait up to 10 seconds for either the login form or the playback date picker input to appear
+        # Wait up to 10 seconds for either the login form or the dashboard logout indicator to appear
         email_sel = config.selectors["login"]["email_input"]
-        date_sel = config.selectors["playback"]["date_start_input"]
-        page.wait_for_selector(f"{email_sel}, {date_sel}", timeout=10000)
+        dashboard_sel = config.selectors["login"]["dashboard_indicator"]
+        page.wait_for_selector(f"{email_sel}, {dashboard_sel}", timeout=10000)
     except Exception:
         pass
     
     url_lower = page.url.lower()
     email_sel = config.selectors["login"]["email_input"]
     password_sel = config.selectors["login"]["password_input"]
-    date_sel = config.selectors["playback"]["date_start_input"]
+    dashboard_sel = config.selectors["login"]["dashboard_indicator"]
     
-    # 1. First check: is the page asking for username/password (login fields visible)?
-    if page.locator(email_sel).is_visible() or page.locator(password_sel).is_visible():
-        logger.info("Login form/inputs detected (username/password fields visible). No active session.")
-    # 2. Check URL explicitly: if it redirected to the login page, we are not logged in!
-    elif "login" in url_lower or "404" in url_lower:
-        logger.info("Redirected to login screen. No active session.")
-    # 3. Check if we are on the playback page and the date selector is actually visible
-    elif "playback" in url_lower and page.locator(date_sel).is_visible():
-        logger.info("Existing session detected. Login skipped.")
+    # Check if we were redirected away from the login page to a dashboard/home/playback page
+    is_logged_in_redirect = (
+        "login" not in url_lower 
+        and ("dashboard" in url_lower or "home" in url_lower or "customer" in url_lower or "playback" in url_lower)
+    )
+    
+    # Or if the dashboard indicator is visible and login fields are not
+    has_dashboard_element = page.locator(dashboard_sel).count() > 0 and page.locator(dashboard_sel).first.is_visible()
+    has_login_fields = page.locator(email_sel).is_visible() or page.locator(password_sel).is_visible()
+    
+    if (is_logged_in_redirect or has_dashboard_element) and not has_login_fields:
+        logger.info("Existing valid session detected (redirected away from login). Login skipped.")
         return True
-    else:
-        logger.info(f"Session verification failed (URL: '{url_lower}', Date Input Visible: {page.locator(date_sel).is_visible()})")
-
-    logger.info("No active session detected. Attempting login page navigation...")
-    page.goto(config.portal_url)
-    page.wait_for_timeout(2000)
     
-    logger.info("Attempting login form fill...")
-
+    logger.info("No active session detected. Attempting login form fill...")
+    # Since we are already on the login page (or page.goto(login_url) was already called),
+    # we don't need to do page.goto(config.portal_url) again unless we somehow got redirected to a 404 or something weird.
+    if "login" not in url_lower:
+        logger.info(f"Currently at '{url_lower}'. Navigating to login page: {login_url}")
+        page.goto(login_url)
+        page.wait_for_timeout(2000)
     
     try:
         # Wait for either the login form OR the dashboard indicator (in case of redirect)
@@ -129,6 +131,12 @@ def login(page: Page) -> bool:
             page.wait_for_timeout(config.action_wait_ms)
     except Exception as e:
         logger.warning(f"Error filling credentials form: {e}. User might need to login manually.")
+        try:
+            screenshot_path = "screenshots/login_attempt_fail.png"
+            page.screenshot(path=screenshot_path)
+            logger.info(f"Saved debug screenshot to {screenshot_path}. Current URL: {page.url}")
+        except Exception as se:
+            logger.warning(f"Could not take debug screenshot: {se}")
 
     # Re-evaluate login status
     if is_logged_in(page):
