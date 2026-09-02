@@ -1,18 +1,18 @@
 automation:
   action_wait_ms: 2000
   check_login_interval_seconds: 5
-  download_end_time: 09:30
-  download_start_time: 08:30
+  download_end_time: '16:01'
+  download_start_time: '16:00'
   headless: false
   retry_count: 3
   timeout_ms: 30000
 campaign:
-  name: SADHAN Poster
+  name: SMC Testing_4-4:30 3,SMC Testing Morning  4 to 4:30 AM,
 email:
   recipients:
   - vishal.singh2@midlandmicrofin.com
   sender: vishudv125@gmail.com
-  smtp_password: ""
+  smtp_password: bavb ddcd glkh pigv
   smtp_port: 587
   smtp_server: smtp.gmail.com
   smtp_username: vishudv125@gmail.com
@@ -27,7 +27,7 @@ paths:
   screenshot_dir: screenshots
 portal:
   email: vishal.singh2@midlandmicrofin.com
-  password: ""
+  password: Automation@#321
   playback_url: https://signedge.in.panasonic.com/customer/midlandmicrofinltd/report/content-playback
   url: https://signedge.in.panasonic.com/customer/midlandmicrofinltd/login
 scheduler:

@@ -72,25 +72,29 @@ def navigate_to_content_playback(page: Page):
         logger.error(f"Navigation to Content Playback page failed: {e}")
         raise
 
-def select_react_select_option(page, input_selector: str, option_text: str):
+def select_react_select_option(page, input_selector: str, option_text: str, exact_match: bool = False):
     """Fills a React-Select input and clicks the matching option in the dropdown list."""
-    logger.info(f"Selecting custom dropdown option '{option_text}' via {input_selector}")
+    import re
+    target_clean = re.sub(r'\s+', ' ', option_text.strip()).lower()
+    logger.info(f"Selecting custom dropdown option '{option_text}' via {input_selector} (exact_match={exact_match})")
     
     # Wait for the input box
     page.wait_for_selector(input_selector, timeout=10000)
     input_el = page.locator(input_selector)
     
-    # Extract unique code prefix (e.g. "B0006" or first 8 chars) to avoid search term typing issues
-    import re
-    match = re.match(r'^([a-zA-Z0-9]+)', option_text)
-    search_term = match.group(1) if match else option_text[:8]
+    if exact_match:
+        search_term = option_text.strip()
+    else:
+        # Extract unique code prefix (e.g. "B0006" or first 8 chars) to avoid search term typing issues
+        match = re.match(r'^([a-zA-Z0-9]+)', option_text)
+        search_term = match.group(1) if match else option_text[:8]
     
     # Focus input and open the menu by pressing ArrowDown
     input_el.click(force=True)
     input_el.press("ArrowDown")
     page.wait_for_timeout(500)
     
-    # Fill search prefix
+    # Fill search text
     input_el.fill("")
     input_el.press_sequentially(search_term, delay=80)
     page.wait_for_timeout(1500)
@@ -98,6 +102,7 @@ def select_react_select_option(page, input_selector: str, option_text: str):
     # Check dropdown list options and click the matching one
     clicked = False
     option_sel = "div[id*='-option'], div[class*='-option'], .react-select__option"
+    found_options = []
     
     try:
         # Wait for options, if they don't show try ArrowDown again to open menu
@@ -110,22 +115,34 @@ def select_react_select_option(page, input_selector: str, option_text: str):
         options = page.locator(option_sel)
         count = options.count()
         
-        # Loop and click the option containing our search prefix (e.g. "B0003")
+        # Loop and click the option
         for i in range(count):
             opt = options.nth(i)
             opt_text = opt.inner_text().strip()
-            if search_term.lower() in opt_text.lower():
+            found_options.append(opt_text)
+            opt_clean = re.sub(r'\s+', ' ', opt_text).lower()
+            
+            is_match = False
+            if exact_match:
+                is_match = (opt_clean == target_clean)
+            else:
+                is_match = (search_term.lower() in opt_clean)
+                
+            if is_match:
                 opt.click(force=True)
                 clicked = True
-                logger.info(f"Selected dropdown option: '{opt_text}' matching prefix '{search_term}'")
+                logger.info(f"Selected dropdown option: '{opt_text}' matching '{search_term}' (exact={exact_match})")
                 break
     except Exception as e:
         logger.debug(f"Dropdown options selection helper error: {e}")
         
     if not clicked:
-        # Final Fallback: Press Enter
-        logger.warning(f"Could not find option containing '{search_term}' in the list. Pressing Enter as final fallback...")
-        input_el.press("Enter")
+        if exact_match:
+            logger.warning(f"Could not find exact matching option for '{option_text}' in options list {found_options}. Trying Enter key fallback...")
+            input_el.press("Enter")
+        else:
+            logger.warning(f"Could not find matching option for '{search_term}' in the list. Pressing Enter as final fallback...")
+            input_el.press("Enter")
         
     page.wait_for_timeout(1000)
 
@@ -310,8 +327,9 @@ def select_search_filters(page: Page, campaign_name: str) -> str:
             logger.info("Falling back to calendar UI clicking for To Date...")
             click_react_calendar_date(page, end_date_sel, target_date)
 
-        # Select Campaign
-        select_react_select_option(page, campaign_sel, campaign_name)
+        # Select Campaign (Clear previous campaign selection first)
+        clear_react_select(page, campaign_sel)
+        select_react_select_option(page, campaign_sel, campaign_name, exact_match=True)
         
         return dates["ddmmyyyy"]
     except Exception as e:

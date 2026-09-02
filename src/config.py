@@ -52,7 +52,16 @@ class AppConfig:
         self.portal_password = os.environ.get("PORTAL_PASSWORD", portal.get("password", ""))
 
         # Campaign config
-        self.campaign_name = self._data.get("campaign", {}).get("name", "")
+        raw_campaign_name = self._data.get("campaign", {}).get("name", "")
+        if isinstance(raw_campaign_name, list):
+            self.campaign_names = [str(n).strip() for n in raw_campaign_name if n]
+            self.campaign_name = ", ".join(self.campaign_names)
+        elif isinstance(raw_campaign_name, str):
+            self.campaign_names = [n.strip() for n in raw_campaign_name.split(",") if n.strip()]
+            self.campaign_name = raw_campaign_name
+        else:
+            self.campaign_names = []
+            self.campaign_name = ""
 
         # Paths config - resolve to absolute paths relative to project root
         paths = self._data.get("paths", {})

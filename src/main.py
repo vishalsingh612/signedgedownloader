@@ -1,5 +1,12 @@
-import argparse
 import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path
+WORKSPACE_DIR = Path(__file__).resolve().parent.parent
+if str(WORKSPACE_DIR) not in sys.path:
+    sys.path.insert(0, str(WORKSPACE_DIR))
+
+import argparse
 import time
 import traceback
 from datetime import datetime
@@ -46,13 +53,17 @@ def run_downloader_job(force: bool = False):
         logger.critical(f"Aborting execution. Failed to load device list: {e}")
         return
 
-    logger.info(f"===== Daily Screenshot Downloader Job Started for {display_date} =====")
+    campaigns = config.campaign_names
+    campaigns_str = ", ".join(campaigns) if campaigns else "None"
+    logger.info(f"===== Daily Screenshot Downloader Job Started for {display_date} (Campaigns: {campaigns_str}) =====")
     try:
-        notifier.send_started(config.campaign_name, display_date, expected_count)
+        notifier.send_started(campaigns_str, display_date, expected_count)
     except Exception as ne:
         logger.error(f"Failed to send job started notification email: {ne}")
 
-
+    if not campaigns:
+        logger.warning("No campaign names found in configuration. Exiting.")
+        return
 
     page = None
     try:
@@ -64,48 +75,67 @@ def run_downloader_job(force: bool = False):
         if not login_success:
             raise Exception("Login failed or browser was closed before user completed manual login.")
             
-        # Navigate to Playback Reports page
-        navigate_to_content_playback(page)
-        
-        # Select Date & Campaign Filters
-        select_search_filters(page, config.campaign_name)
-        
-        # Process device loop
-        results = process_devices(page, config.campaign_name, target_date)
-        
+        overall_results = {
+            "completed_count": 0,
+            "images_downloaded": 0,
+            "failed_count": 0,
+            "warnings_count": 0,
+            "failed_summary": {}
+        }
+
+        for idx, campaign in enumerate(campaigns):
+            logger.info(f"===== Processing Campaign ({idx+1}/{len(campaigns)}): '{campaign}' =====")
+            
+            # Navigate to Playback Reports page
+            navigate_to_content_playback(page)
+            
+            # Select Date & Campaign Filters
+            select_search_filters(page, campaign)
+            
+            # Process device loop
+            results = process_devices(page, campaign, target_date)
+            
+            overall_results["completed_count"] += results["completed_count"]
+            overall_results["images_downloaded"] += results["images_downloaded"]
+            overall_results["failed_count"] += results["failed_count"]
+            overall_results["warnings_count"] += results["warnings_count"]
+            
+            for dev, err in results["failed_summary"].items():
+                overall_results["failed_summary"][f"{campaign} - {dev}"] = err
+            
+            # If all devices processed successfully for this campaign, clear checkpoint
+            if results["failed_count"] == 0:
+                logger.info(f"All devices processed successfully for campaign '{campaign}'. Clearing checkpoint state.")
+                checkpoint_manager.set_campaign(campaign)
+                checkpoint_manager.clear()
+            else:
+                logger.warning(f"Campaign '{campaign}' completed with {results['failed_count']} failed devices. Checkpoint preserved for retry.")
+
         # Calculate duration
         duration_str = format_duration(time.time() - start_time)
         
         # Compile failure summary text if any failures occurred
         failures_summary_html = ""
-        if results["failed_count"] > 0:
+        if overall_results["failed_count"] > 0:
             failures_summary_html = "<ul>"
-            for dev, err in results["failed_summary"].items():
+            for dev, err in overall_results["failed_summary"].items():
                 failures_summary_html += f"<li><strong>{dev}</strong>: {err}</li>"
             failures_summary_html += "</ul>"
 
         # Send completed email
         try:
             notifier.send_completed(
-                campaign=config.campaign_name,
+                campaign=campaigns_str,
                 date_str=display_date,
                 duration=duration_str,
-                devices_processed=results["completed_count"],
-                images_downloaded=results["images_downloaded"],
-                failures_count=results["failed_count"],
-                warnings_count=results["warnings_count"],
+                devices_processed=overall_results["completed_count"],
+                images_downloaded=overall_results["images_downloaded"],
+                failures_count=overall_results["failed_count"],
+                warnings_count=overall_results["warnings_count"],
                 failures_summary=failures_summary_html
             )
         except Exception as ne:
             logger.error(f"Failed to send job completed notification email: {ne}")
-
-        
-        # If all devices processed successfully, clear checkpoint
-        if results["failed_count"] == 0:
-            logger.info("All devices processed successfully. Clearing checkpoint state.")
-            checkpoint_manager.clear()
-        else:
-            logger.warning(f"Job completed with {results['failed_count']} failed devices. Checkpoint preserved for retry.")
 
         logger.info(f"===== Daily Screenshot Downloader Job Finished successfully in {duration_str} =====")
 

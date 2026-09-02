@@ -45,6 +45,9 @@ def process_devices(page: Page, campaign_name: str, date_ddmmyyyy: str) -> dict:
     # Load list of devices from Excel
     devices_list = load_devices()
     
+    # Set current campaign in checkpoint manager
+    checkpoint_manager.set_campaign(campaign_name)
+    
     # Load checkpoint
     checkpoint = checkpoint_manager.load(date_ddmmyyyy)
     completed_devices = set(checkpoint.get("completed_devices", []))

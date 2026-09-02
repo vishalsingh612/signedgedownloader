@@ -7,6 +7,7 @@ from src.logger import logger
 
 class CheckpointManager:
     def __init__(self):
+        self.campaign_name = ""
         self.checkpoint_file = config.checkpoint_dir / "checkpoint.json"
         self.state: Dict[str, Any] = {
             "date": "",
@@ -15,6 +16,16 @@ class CheckpointManager:
             "downloaded_images": [],
             "failed_devices": {}
         }
+
+    def set_campaign(self, campaign_name: str):
+        """Sets the active campaign name and updates the checkpoint file path."""
+        self.campaign_name = campaign_name
+        if campaign_name:
+            # Sanitize campaign name for file systems
+            safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in campaign_name)
+            self.checkpoint_file = config.checkpoint_dir / f"checkpoint_{safe_name}.json"
+        else:
+            self.checkpoint_file = config.checkpoint_dir / "checkpoint.json"
 
     def load(self, target_date: str) -> Dict[str, Any]:
         """

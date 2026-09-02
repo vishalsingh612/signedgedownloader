@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path
+WORKSPACE_DIR = Path(__file__).resolve().parent.parent
+if str(WORKSPACE_DIR) not in sys.path:
+    sys.path.insert(0, str(WORKSPACE_DIR))
+
 import os
 import json
 import re
@@ -7,10 +15,6 @@ import threading
 import pandas as pd
 from datetime import datetime, timedelta
 from http.server import ThreadingHTTPServer, HTTPServer, BaseHTTPRequestHandler
-from pathlib import Path
-
-# Paths
-WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 LOG_DIR = WORKSPACE_DIR / "logs"
 APP_LOG_PATH = LOG_DIR / "app.log"
 DOWNLOADS_CSV_PATH = LOG_DIR / "downloads.csv"

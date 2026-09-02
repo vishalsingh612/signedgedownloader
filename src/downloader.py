@@ -150,10 +150,11 @@ def _download_all_from_modal(page: Page, device_folder: Path, row_index: int) ->
 
 def download_device_screenshots(page: Page, device_name: str, downloaded_filenames: list) -> int:
     """
-    For each result row:
+    For each result row across all pages:
       1. Clicks the blue download icon → SnapShots modal opens
       2. Downloads each image from the modal individually
       3. Closes the modal and moves to the next row
+      4. Navigates to next page if table results span multiple pages
     Saves files to downloads/<sanitized_device_name>/
     Returns total count of downloaded images.
     """
@@ -179,189 +180,264 @@ def download_device_screenshots(page: Page, device_name: str, downloaded_filenam
         log_download(folder_name, "", "SKIPPED", 0.0, "Results table not loaded")
         return 0
 
-    # 2. Wait for loading spinner (.g-loader) to disappear
-    logger.info("Waiting for table loading spinner to disappear (up to 90 seconds)...")
-    max_wait_seconds = 90
-    poll_interval = 2.0
-    elapsed = 0.0
-    
-    # Wait first a tiny bit to let the spinner mount
-    page.wait_for_timeout(1000)
-    
-    while elapsed < max_wait_seconds:
-        # Check early for "No Results Found" to skip waiting
-        for no_data_text in ["No Results Found", "No data found", "No records"]:
-            try:
-                if page.locator(f"text={no_data_text}").first.is_visible():
-                    logger.info(f"No screenshots found (matching '{no_data_text}') for device '{device_name}'.")
-                    log_download(folder_name, "", "SKIPPED", elapsed, f"No screenshots on portal ({no_data_text})")
-                    return 0
-            except Exception:
-                pass
-
-        loader_visible = False
-        try:
-            if page.locator(".g-loader").first.is_visible():
-                loader_visible = True
-        except Exception:
-            pass
-            
-        if not loader_visible:
-            logger.info("Table loading spinner has disappeared.")
-            break
-            
-        page.wait_for_timeout(int(poll_interval * 1000))
-        elapsed += poll_interval
-        if int(elapsed) % 6 == 0:
-            logger.info(f"Still waiting for loading spinner... ({int(elapsed)}s elapsed)")
-            
-    if elapsed >= max_wait_seconds:
-        logger.warning(f"Timed out waiting {max_wait_seconds}s for loading spinner to disappear. Checking table anyway.")
-        
-    page.wait_for_timeout(1000)  # Wait for DOM to stabilize
-
-    # 3. Check for "No Results Found"
-    for no_data_text in ["No Results Found", "No data found", "No records"]:
-        try:
-            if page.locator(f"text={no_data_text}").first.is_visible():
-                logger.info(f"No screenshots found (matching '{no_data_text}') for device '{device_name}'.")
-                log_download(folder_name, "", "SKIPPED", 0.0, f"No screenshots on portal ({no_data_text})")
-                return 0
-        except Exception:
-            pass
-
-    # 4. Count rows and map headers to column indices
-    start_time_idx = 4
-    end_time_idx = 5
-    try:
-        headers = page.locator(f"{results_sel} table thead th")
-        header_count = headers.count()
-        for i in range(header_count):
-            h_text = headers.nth(i).inner_text().strip().lower()
-            if "start time" in h_text:
-                start_time_idx = i
-            elif "end time" in h_text:
-                end_time_idx = i
-    except Exception as e:
-        logger.debug(f"Failed dynamically mapping headers: {e}. Falling back to default indices 4 and 5.")
-
-    rows = page.locator(f"{results_sel} {row_sel}")
-    row_count = rows.count()
-    logger.info(f"Found {row_count} result row(s) for device '{device_name}'.")
-
-    if row_count == 0:
-        log_download(folder_name, "", "SKIPPED", 0.0, "Results table has 0 rows")
-        return 0
-
     total_downloaded = 0
+    page_num = 1
+    max_pages = 50
 
-    for row_idx in range(row_count):
-        row = rows.nth(row_idx)
+    while page_num <= max_pages:
+        logger.info(f"--- Processing Table Page {page_num} for device '{device_name}' ---")
 
-        # Extract start and end times to verify the 8:30 - 9:30 condition
-        start_str, end_str = "", ""
-        try:
-            start_str = row.locator("td").nth(start_time_idx).inner_text().strip()
-            end_str = row.locator("td").nth(end_time_idx).inner_text().strip()
-        except Exception as e:
-            logger.warning(f"Row {row_idx + 1}: Failed to extract start/end time cells: {e}")
-
-        # Check range: both must be between start and end time (inclusive)
-        # Supports multiple comma-separated slots
-        start_slots = [s.strip() for s in str(config.download_start_time).split(",") if s.strip()]
-        end_slots = [e.strip() for e in str(config.download_end_time).split(",") if e.strip()]
+        # Wait for loading spinner (.g-loader) to disappear on current page
+        logger.info(f"Waiting for table loading spinner on page {page_num}...")
+        max_wait_seconds = 90
+        poll_interval = 2.0
+        elapsed = 0.0
         
-        if len(start_slots) != len(end_slots):
-            logger.warning(f"Mismatch in number of start slots ({len(start_slots)}) and end slots ({len(end_slots)}). Using the first slot only.")
-            start_slots = start_slots[:1] if start_slots else ["08:30"]
-            end_slots = end_slots[:1] if end_slots else ["09:30"]
-            
-        slots = []
-        for s_slot, e_slot in zip(start_slots, end_slots):
+        page.wait_for_timeout(1000)
+        
+        while elapsed < max_wait_seconds:
+            for no_data_text in ["No Results Found", "No data found", "No records"]:
+                try:
+                    if page.locator(f"text={no_data_text}").first.is_visible():
+                        if page_num == 1:
+                            logger.info(f"No screenshots found (matching '{no_data_text}') for device '{device_name}'.")
+                            log_download(folder_name, "", "SKIPPED", elapsed, f"No screenshots on portal ({no_data_text})")
+                            return 0
+                        else:
+                            logger.info(f"No further records found on page {page_num}.")
+                            break
+                except Exception:
+                    pass
+
+            loader_visible = False
             try:
-                start_h, start_m = map(int, s_slot.split(":"))
-                end_h, end_m = map(int, e_slot.split(":"))
-                t_start = datetime_time(start_h, start_m)
-                t_end = datetime_time(end_h, end_m)
-                slots.append((t_start, t_end, s_slot, e_slot))
-            except Exception as pe:
-                logger.warning(f"Failed parsing slot {s_slot} - {e_slot}: {pe}")
+                if page.locator(".g-loader").first.is_visible():
+                    loader_visible = True
+            except Exception:
+                pass
                 
-        if not slots:
-            slots = [(datetime_time(8, 30), datetime_time(9, 30), "08:30", "09:30")]
+            if not loader_visible:
+                logger.info(f"Table loading spinner has disappeared for page {page_num}.")
+                break
+                
+            page.wait_for_timeout(int(poll_interval * 1000))
+            elapsed += poll_interval
+            if int(elapsed) % 6 == 0:
+                logger.info(f"Still waiting for page {page_num} loading spinner... ({int(elapsed)}s elapsed)")
+                
+        if elapsed >= max_wait_seconds:
+            logger.warning(f"Timed out waiting {max_wait_seconds}s for page {page_num} spinner. Checking table anyway.")
             
+        page.wait_for_timeout(1000)  # Wait for DOM to stabilize
+
+        # Check for "No Results Found" on Page 1
+        if page_num == 1:
+            for no_data_text in ["No Results Found", "No data found", "No records"]:
+                try:
+                    if page.locator(f"text={no_data_text}").first.is_visible():
+                        logger.info(f"No screenshots found (matching '{no_data_text}') for device '{device_name}'.")
+                        log_download(folder_name, "", "SKIPPED", 0.0, f"No screenshots on portal ({no_data_text})")
+                        return 0
+                except Exception:
+                    pass
+
+        # Count rows and map headers to column indices
+        start_time_idx = 4
+        end_time_idx = 5
         try:
-            row_start = datetime_time(*map(int, start_str.split(":")))
-            row_end = datetime_time(*map(int, end_str.split(":")))
+            headers = page.locator(f"{results_sel} table thead th")
+            header_count = headers.count()
+            for i in range(header_count):
+                h_text = headers.nth(i).inner_text().strip().lower()
+                if "start time" in h_text:
+                    start_time_idx = i
+                elif "end time" in h_text:
+                    end_time_idx = i
+        except Exception as e:
+            logger.debug(f"Failed dynamically mapping headers: {e}. Falling back to default indices 4 and 5.")
+
+        rows = page.locator(f"{results_sel} {row_sel}")
+        row_count = rows.count()
+        logger.info(f"Page {page_num}: Found {row_count} result row(s) for device '{device_name}'.")
+
+        if row_count == 0:
+            if page_num == 1:
+                log_download(folder_name, "", "SKIPPED", 0.0, "Results table has 0 rows")
+            break
+
+        for row_idx in range(row_count):
+            row = rows.nth(row_idx)
+
+            # Extract start and end times to verify the time slot condition
+            start_str, end_str = "", ""
+            try:
+                start_str = row.locator("td").nth(start_time_idx).inner_text().strip()
+                end_str = row.locator("td").nth(end_time_idx).inner_text().strip()
+            except Exception as e:
+                logger.warning(f"Page {page_num} Row {row_idx + 1}: Failed to extract start/end time cells: {e}")
+
+            # Check range: both must be between start and end time (inclusive)
+            start_slots = [s.strip() for s in str(config.download_start_time).split(",") if s.strip()]
+            end_slots = [e.strip() for e in str(config.download_end_time).split(",") if e.strip()]
             
-            in_any_slot = False
-            for t_start, t_end, s_slot, e_slot in slots:
-                if (t_start <= row_start <= t_end and t_start <= row_end <= t_end):
-                    in_any_slot = True
-                    break
-            
-            if not in_any_slot:
-                slots_str = ", ".join(f"{s[2]}-{s[3]}" for s in slots)
-                logger.info(f"Row {row_idx + 1}/{row_count}: Skipping. Interval {start_str} - {end_str} is outside configured slots: {slots_str}.")
+            if len(start_slots) != len(end_slots):
+                logger.warning(f"Mismatch in start slots ({len(start_slots)}) and end slots ({len(end_slots)}). Using first slot only.")
+                start_slots = start_slots[:1] if start_slots else ["08:30"]
+                end_slots = end_slots[:1] if end_slots else ["09:30"]
+                
+            slots = []
+            for s_slot, e_slot in zip(start_slots, end_slots):
+                try:
+                    start_h, start_m = map(int, s_slot.split(":"))
+                    end_h, end_m = map(int, e_slot.split(":"))
+                    t_start = datetime_time(start_h, start_m)
+                    t_end = datetime_time(end_h, end_m)
+                    slots.append((t_start, t_end, s_slot, e_slot))
+                except Exception as pe:
+                    logger.warning(f"Failed parsing slot {s_slot} - {e_slot}: {pe}")
+                    
+            if not slots:
+                slots = [(datetime_time(8, 30), datetime_time(9, 30), "08:30", "09:30")]
+                
+            try:
+                row_start = datetime_time(*map(int, start_str.split(":")))
+                row_end = datetime_time(*map(int, end_str.split(":")))
+                
+                in_any_slot = False
+                for t_start, t_end, s_slot, e_slot in slots:
+                    if (t_start <= row_start <= t_end and t_start <= row_end <= t_end):
+                        in_any_slot = True
+                        break
+                
+                if not in_any_slot:
+                    slots_str = ", ".join(f"{s[2]}-{s[3]}" for s in slots)
+                    logger.info(f"Page {page_num} Row {row_idx + 1}/{row_count}: Skipping. Interval {start_str} - {end_str} is outside slots: {slots_str}.")
+                    continue
+            except Exception as e:
+                logger.warning(f"Page {page_num} Row {row_idx + 1}/{row_count}: Skipping due to time parsing error on '{start_str}' - '{end_str}': {e}")
                 continue
-        except Exception as e:
-            logger.warning(f"Row {row_idx + 1}/{row_count}: Skipping due to time parsing exception on '{start_str}' - '{end_str}': {e}")
-            continue
 
-        # The download icon is in the last <td> of the row
-        last_td = row.locator("td:last-child")
-        
-        # Look for any clickable download element in last cell
-        download_triggers = [
-            "a", "button", "svg", "i", "span", "img"
-        ]
-        icon = None
-        for tag in download_triggers:
+            last_td = row.locator("td:last-child")
+            
+            download_triggers = ["a", "button", "svg", "i", "span", "img"]
+            icon = None
+            for tag in download_triggers:
+                try:
+                    candidate = last_td.locator(tag).first
+                    if candidate.count() > 0 and candidate.is_visible():
+                        icon = candidate
+                        break
+                except Exception:
+                    pass
+
+            if not icon:
+                try:
+                    icon = last_td.locator("a, button").first
+                except Exception:
+                    pass
+
             try:
-                candidate = last_td.locator(tag).first
+                visible = icon.is_visible(timeout=2000) if icon else False
+            except Exception:
+                visible = False
+
+            if not visible:
+                try:
+                    cell_html = last_td.inner_html()
+                except Exception:
+                    cell_html = "unknown"
+                logger.warning(f"Page {page_num} Row {row_idx + 1}: No download icon visible in last cell. TD HTML: {cell_html}")
+                continue
+
+            logger.info(f"Page {page_num} Row {row_idx + 1}/{row_count}: Opening SnapShots modal...")
+            try:
+                icon.scroll_into_view_if_needed()
+                icon.click(force=True)
+            except Exception as e:
+                logger.warning(f"Page {page_num} Row {row_idx + 1}: Could not click download icon: {e}")
+                continue
+
+            count = _download_from_modal(page, device_folder, row_idx)
+            total_downloaded += count
+
+            _close_modal(page)
+            page.wait_for_timeout(800)
+
+        # Record first row signature to verify page content changes upon advancing
+        first_row_sig = ""
+        if row_count > 0:
+            try:
+                first_row_sig = rows.first.inner_text().strip()
+            except Exception:
+                pass
+
+        # Check for Next Page button to iterate pagination
+        next_btn = None
+        next_selectors = [
+            "ul.pagination li.page-item:not(.disabled) a.page-link:has-text('›')",
+            "ul.pagination li.page-item:not(.disabled) a.page-link:has-text('Next')",
+            "ul.pagination li.page-item:not(.disabled) button:has-text('Next')",
+            ".pagination li:not(.disabled):not(.active) a[aria-label='Next']",
+            "ul.pagination li.active + li:not(.disabled) a",
+            "button.page-link:has-text('Next'):not([disabled])",
+            "a.page-link:has-text('›'):not(.disabled)",
+            ".pagination-next:not(.disabled)",
+            "a[rel='next']:not(.disabled)",
+            "button[aria-label='Next page']:not([disabled])"
+        ]
+
+        for p_sel in next_selectors:
+            try:
+                candidate = page.locator(p_sel).first
                 if candidate.count() > 0 and candidate.is_visible():
-                    icon = candidate
+                    disabled_attr = candidate.get_attribute("disabled")
+                    aria_disabled = candidate.get_attribute("aria-disabled") or ""
+                    
+                    parent_li = candidate.locator("xpath=ancestor::li[1]")
+                    li_class = ""
+                    if parent_li.count() > 0:
+                        li_class = parent_li.get_attribute("class") or ""
+                        if not aria_disabled:
+                            aria_disabled = parent_li.get_attribute("aria-disabled") or ""
+                            
+                    if "disabled" in li_class or aria_disabled == "true" or disabled_attr is not None:
+                        continue
+
+                    next_btn = candidate
                     break
             except Exception:
                 pass
 
-        if not icon:
-            # Fallback if specific tag logic failed
+        if next_btn and next_btn.is_visible():
+            logger.info(f"Found active Next Page button. Advancing to page {page_num + 1}...")
             try:
-                icon = last_td.locator("a, button").first
-            except Exception:
-                pass
-
-        try:
-            visible = icon.is_visible(timeout=2000) if icon else False
-        except Exception:
-            visible = False
-
-        if not visible:
-            # Print cell content warning for VM troubleshooting
-            try:
-                cell_html = last_td.inner_html()
-            except Exception:
-                cell_html = "unknown"
-            logger.warning(f"Row {row_idx + 1}: No download icon (a, button, svg, i, span, img) visible in last cell. TD HTML: {cell_html}")
-            continue
-
-        logger.info(f"Row {row_idx + 1}/{row_count}: Opening SnapShots modal...")
-        try:
-            icon.scroll_into_view_if_needed()
-            icon.click(force=True)
-        except Exception as e:
-            logger.warning(f"Row {row_idx + 1}: Could not click download icon: {e}")
-            continue
-
-        count = _download_from_modal(page, device_folder, row_idx)
-        total_downloaded += count
-
-        _close_modal(page)
-        page.wait_for_timeout(800)
+                next_btn.scroll_into_view_if_needed()
+                next_btn.click(force=True)
+                page.wait_for_timeout(1500)
+                
+                # Check if first row signature changed on new page
+                new_rows = page.locator(f"{results_sel} {row_sel}")
+                new_sig = ""
+                if new_rows.count() > 0:
+                    try:
+                        new_sig = new_rows.first.inner_text().strip()
+                    except Exception:
+                        pass
+                        
+                if first_row_sig and new_sig and new_sig == first_row_sig:
+                    logger.info(f"Table row content did not change after clicking Next Page. Reached last page at page {page_num}.")
+                    break
+                    
+                page_num += 1
+            except Exception as pe:
+                logger.warning(f"Failed clicking Next Page button on page {page_num}: {pe}")
+                break
+        else:
+            logger.info(f"No active Next Page button found after page {page_num}. Completed table pagination.")
+            break
 
     if total_downloaded == 0:
-        log_download(folder_name, "", "SKIPPED", 0.0, "All rows outside configured slots")
+        log_download(folder_name, "", "SKIPPED", 0.0, "All rows outside configured slots or empty")
 
-    logger.info(f"Done. {total_downloaded} image(s) saved to '{folder_name}/'.")
+    logger.info(f"Done. {total_downloaded} image(s) saved to '{folder_name}/' across {page_num} page(s).")
     return total_downloaded
