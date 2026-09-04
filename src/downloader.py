@@ -89,7 +89,7 @@ def _download_from_modal(page: Page, device_folder: Path, device_name: str, row_
             
             device_parts = device_name.split("-")
             branch_code = _sanitize_folder_name(device_parts[0].strip()) if len(device_parts) > 0 else "UNKNOWN"
-            branch_name = _sanitize_folder_name(device_parts[1].strip())[:10] if len(device_parts) > 1 else "UNKNOWN"
+            branch_name = _sanitize_folder_name(device_parts[1].strip())[:18] if len(device_parts) > 1 else "UNKNOWN"
 
             time_str = ""
             date_str = datetime.now().strftime("%d%m%Y")
@@ -190,7 +190,7 @@ def _download_all_from_modal(page: Page, device_folder: Path, device_name: str, 
             
         device_parts = device_name.split("-")
         branch_code = _sanitize_folder_name(device_parts[0].strip()) if len(device_parts) > 0 else "UNKNOWN"
-        branch_name = _sanitize_folder_name(device_parts[1].strip())[:10] if len(device_parts) > 1 else "UNKNOWN"
+        branch_name = _sanitize_folder_name(device_parts[1].strip())[:18] if len(device_parts) > 1 else "UNKNOWN"
 
         time_str = ""
         date_str = datetime.now().strftime("%d%m%Y")
