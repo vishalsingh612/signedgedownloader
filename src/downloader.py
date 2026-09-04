@@ -87,11 +87,17 @@ def _download_from_modal(page: Page, device_folder: Path, device_name: str, row_
             if suggested and "." in suggested:
                 ext = "." + suggested.split(".")[-1]
             
+            device_parts = device_name.split("-")
+            branch_code = _sanitize_folder_name(device_parts[0].strip()) if len(device_parts) > 0 else "UNKNOWN"
+            branch_name = _sanitize_folder_name(device_parts[1].strip())[:10] if len(device_parts) > 1 else "UNKNOWN"
+
             time_str = ""
+            date_str = datetime.now().strftime("%d%m%Y")
+            
             if suggested:
-                match = re.search(r'(\d{1,2})_(\d{1,2})_(\d{1,2})', suggested)
-                if match:
-                    h, m, s = match.groups()
+                match_time = re.search(r'(\d{1,2})_(\d{1,2})_(\d{1,2})', suggested)
+                if match_time:
+                    h, m, s = match_time.groups()
                     is_pm = "pm" in suggested.lower()
                     is_am = "am" in suggested.lower()
                     h = int(h)
@@ -99,14 +105,17 @@ def _download_from_modal(page: Page, device_folder: Path, device_name: str, row_
                         h += 12
                     elif is_am and h == 12:
                         h = 0
-                    time_str = f"{h:02d}{m}"
+                    time_str = f"{h:02d}{m}{s}"
+                
+                match_date = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', suggested)
+                if match_date:
+                    d, mo, y = match_date.groups()
+                    date_str = f"{int(d):02d}{int(mo):02d}{y}"
             
             if not time_str:
-                time_str = current_time_str
+                time_str = datetime.now().strftime("%H%M%S")
                 
-            safe_device_name = _sanitize_folder_name(device_name)[:5]
-            
-            base_filename = f"{safe_device_name}_{time_str}"
+            base_filename = f"{branch_code}_{branch_name}_{date_str}_{time_str}"
             filename = f"{base_filename}{ext}"
             
             counter = 1
@@ -179,11 +188,17 @@ def _download_all_from_modal(page: Page, device_folder: Path, device_name: str, 
         if suggested and "." in suggested:
             ext = "." + suggested.split(".")[-1]
             
+        device_parts = device_name.split("-")
+        branch_code = _sanitize_folder_name(device_parts[0].strip()) if len(device_parts) > 0 else "UNKNOWN"
+        branch_name = _sanitize_folder_name(device_parts[1].strip())[:10] if len(device_parts) > 1 else "UNKNOWN"
+
         time_str = ""
+        date_str = datetime.now().strftime("%d%m%Y")
+        
         if suggested:
-            match = re.search(r'(\d{1,2})_(\d{1,2})_(\d{1,2})', suggested)
-            if match:
-                h, m, s = match.groups()
+            match_time = re.search(r'(\d{1,2})_(\d{1,2})_(\d{1,2})', suggested)
+            if match_time:
+                h, m, s = match_time.groups()
                 is_pm = "pm" in suggested.lower()
                 is_am = "am" in suggested.lower()
                 h = int(h)
@@ -191,14 +206,17 @@ def _download_all_from_modal(page: Page, device_folder: Path, device_name: str, 
                     h += 12
                 elif is_am and h == 12:
                     h = 0
-                time_str = f"{h:02d}{m}"
+                time_str = f"{h:02d}{m}{s}"
+            
+            match_date = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', suggested)
+            if match_date:
+                d, mo, y = match_date.groups()
+                date_str = f"{int(d):02d}{int(mo):02d}{y}"
         
         if not time_str:
-            time_str = current_time_str
+            time_str = datetime.now().strftime("%H%M%S")
             
-        safe_device_name = _sanitize_folder_name(device_name)[:5]
-        
-        base_filename = f"{safe_device_name}_{time_str}_all"
+        base_filename = f"{branch_code}_{branch_name}_{date_str}_{time_str}_all"
         filename = f"{base_filename}{ext}"
         
         counter = 1
