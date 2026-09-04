@@ -1,13 +1,13 @@
 automation:
   action_wait_ms: 2000
   check_login_interval_seconds: 5
-  download_end_time: '16:01'
+  download_end_time: '16:30'
   download_start_time: '16:00'
   headless: false
   retry_count: 3
   timeout_ms: 30000
 campaign:
-  name: SMC Testing_4-4:30 3,SMC Testing Morning  4 to 4:30 AM,
+  name: SMC Slot 1,SMC Slot 2,SMC Slot 3,SMC Slot 4,SMC Slot 5
 email:
   recipients:
   - vishal.singh2@midlandmicrofin.com
@@ -20,7 +20,7 @@ email:
 paths:
   browser_profile_dir: browser_profile
   checkpoint_dir: checkpoints
-  download_dir: downloads
+  download_dir: '~/Desktop/downloads'
   email_templates_dir: templates/emails
   excel_path: config/devices.xlsx
   log_dir: logs
@@ -32,7 +32,7 @@ portal:
   url: https://signedge.in.panasonic.com/customer/midlandmicrofinltd/login
 scheduler:
   enabled: true
-  run_time: 02:00
+  run_time: '9:30'
   timezone: Asia/Kolkata
 selectors:
   download:

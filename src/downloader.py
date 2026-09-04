@@ -3,6 +3,7 @@ import time
 import traceback
 from pathlib import Path
 from datetime import time as datetime_time
+from datetime import datetime
 from playwright.sync_api import Page
 from src.config import config
 from src.logger import logger, log_download
@@ -31,7 +32,7 @@ def _close_modal(page: Page):
         except Exception:
             pass
 
-def _download_from_modal(page: Page, device_folder: Path, row_index: int) -> int:
+def _download_from_modal(page: Page, device_folder: Path, device_name: str, row_index: int) -> int:
     """
     After the SnapShots modal is open, clicks each individual 'Download' button
     and saves each file. Returns the number of files successfully downloaded.
@@ -63,12 +64,15 @@ def _download_from_modal(page: Page, device_folder: Path, row_index: int) -> int
 
     if not download_btn_indices:
         logger.warning(f"No individual 'Download' buttons in modal for row {row_index + 1}. Trying 'Download All'...")
-        return _download_all_from_modal(page, device_folder, row_index)
+        return _download_all_from_modal(page, device_folder, device_name, row_index)
 
     logger.info(f"Row {row_index + 1}: {len(download_btn_indices)} image(s) in SnapShots modal.")
     device_folder.mkdir(parents=True, exist_ok=True)
 
     downloaded = 0
+    safe_device_name = _sanitize_folder_name(device_name)
+    current_time_str = datetime.now().strftime("%H%M")
+    
     for btn_idx, modal_btn_index in enumerate(download_btn_indices):
         start_time = time.time()
         try:
@@ -77,7 +81,39 @@ def _download_from_modal(page: Page, device_folder: Path, row_index: int) -> int
             with page.expect_download(timeout=config.timeout_ms) as dl_info:
                 btn.click()
             download = dl_info.value
-            filename = download.suggested_filename or f"screenshot_r{row_index}_i{btn_idx}_{int(time.time())}.jpg"
+            
+            ext = ".jpg"
+            suggested = download.suggested_filename
+            if suggested and "." in suggested:
+                ext = "." + suggested.split(".")[-1]
+            
+            time_str = ""
+            if suggested:
+                match = re.search(r'(\d{1,2})_(\d{1,2})_(\d{1,2})', suggested)
+                if match:
+                    h, m, s = match.groups()
+                    is_pm = "pm" in suggested.lower()
+                    is_am = "am" in suggested.lower()
+                    h = int(h)
+                    if is_pm and h < 12:
+                        h += 12
+                    elif is_am and h == 12:
+                        h = 0
+                    time_str = f"{h:02d}{m}"
+            
+            if not time_str:
+                time_str = current_time_str
+                
+            safe_device_name = _sanitize_folder_name(device_name)[:5]
+            
+            base_filename = f"{safe_device_name}_{time_str}"
+            filename = f"{base_filename}{ext}"
+            
+            counter = 1
+            while (device_folder / filename).exists():
+                filename = f"{base_filename}_{counter}{ext}"
+                counter += 1
+                
             save_path = device_folder / filename
             download.save_as(str(save_path))
             duration = time.time() - start_time
@@ -99,21 +135,21 @@ def _download_from_modal(page: Page, device_folder: Path, row_index: int) -> int
                     save_path.unlink(missing_ok=True)
                 except Exception as ue:
                     logger.debug(f"Failed to delete XML error file: {ue}")
-                log_download(device_folder.name, filename, "SKIPPED", duration, "image not present")
+                log_download(safe_device_name, filename, "SKIPPED", duration, "image not present")
             else:
                 logger.info(f"  ✓ {filename} saved to {device_folder.name}/ ({duration:.1f}s)")
-                log_download(device_folder.name, filename, "SUCCESS", duration, f"row={row_index+1} img={btn_idx+1}")
+                log_download(safe_device_name, filename, "SUCCESS", duration, f"row={row_index+1} img={btn_idx+1}")
                 checkpoint_manager.add_downloaded_image(filename)
                 downloaded += 1
             page.wait_for_timeout(500)
         except Exception as e:
             duration = time.time() - start_time
             logger.error(f"  ✗ Failed image {btn_idx + 1} of row {row_index + 1}: {e}")
-            log_download(device_folder.name, f"row{row_index+1}_img{btn_idx+1}", "FAILED", duration, str(e))
+            log_download(safe_device_name, f"row{row_index+1}_img{btn_idx+1}", "FAILED", duration, str(e))
 
     return downloaded
 
-def _download_all_from_modal(page: Page, device_folder: Path, row_index: int) -> int:
+def _download_all_from_modal(page: Page, device_folder: Path, device_name: str, row_index: int) -> int:
     """Fallback: clicks 'Download All' in the modal."""
     modal_sel = config.selectors["download"]["modal_container"]
     dl_all_sel = config.selectors["download"]["modal_download_all"]
@@ -130,22 +166,57 @@ def _download_all_from_modal(page: Page, device_folder: Path, row_index: int) ->
 
     device_folder.mkdir(parents=True, exist_ok=True)
     start_time = time.time()
+    safe_device_name = _sanitize_folder_name(device_name)
+    current_time_str = datetime.now().strftime("%H%M")
+    
     try:
         with page.expect_download(timeout=config.timeout_ms) as dl_info:
             dl_all_btn.click()
         download = dl_info.value
-        filename = download.suggested_filename or f"snapshots_r{row_index}_{int(time.time())}.zip"
+        
+        ext = ".zip"
+        suggested = download.suggested_filename
+        if suggested and "." in suggested:
+            ext = "." + suggested.split(".")[-1]
+            
+        time_str = ""
+        if suggested:
+            match = re.search(r'(\d{1,2})_(\d{1,2})_(\d{1,2})', suggested)
+            if match:
+                h, m, s = match.groups()
+                is_pm = "pm" in suggested.lower()
+                is_am = "am" in suggested.lower()
+                h = int(h)
+                if is_pm and h < 12:
+                    h += 12
+                elif is_am and h == 12:
+                    h = 0
+                time_str = f"{h:02d}{m}"
+        
+        if not time_str:
+            time_str = current_time_str
+            
+        safe_device_name = _sanitize_folder_name(device_name)[:5]
+        
+        base_filename = f"{safe_device_name}_{time_str}_all"
+        filename = f"{base_filename}{ext}"
+        
+        counter = 1
+        while (device_folder / filename).exists():
+            filename = f"{base_filename}_{counter}{ext}"
+            counter += 1
+            
         save_path = device_folder / filename
         download.save_as(str(save_path))
         duration = time.time() - start_time
         logger.info(f"  ✓ Download All → {filename} ({duration:.1f}s)")
-        log_download(device_folder.name, filename, "SUCCESS", duration, f"download_all row={row_index+1}")
+        log_download(safe_device_name, filename, "SUCCESS", duration, f"download_all row={row_index+1}")
         checkpoint_manager.add_downloaded_image(filename)
         return 1
     except Exception as e:
         duration = time.time() - start_time
         logger.error(f"'Download All' failed for row {row_index + 1}: {e}")
-        log_download(device_folder.name, f"download_all_row{row_index+1}", "FAILED", duration, str(e))
+        log_download(safe_device_name, f"download_all_row{row_index+1}", "FAILED", duration, str(e))
         return 0
 
 def download_device_screenshots(page: Page, device_name: str, downloaded_filenames: list) -> int:
@@ -155,7 +226,7 @@ def download_device_screenshots(page: Page, device_name: str, downloaded_filenam
       2. Downloads each image from the modal individually
       3. Closes the modal and moves to the next row
       4. Navigates to next page if table results span multiple pages
-    Saves files to downloads/<sanitized_device_name>/
+    Saves files to downloads/<YYYYMMDD>/
     Returns total count of downloaded images.
     """
     sel = config.selectors["download"]
@@ -163,7 +234,8 @@ def download_device_screenshots(page: Page, device_name: str, downloaded_filenam
     row_sel = sel["row_selector"]
 
     folder_name = _sanitize_folder_name(device_name)
-    device_folder = config.download_dir / folder_name
+    date_folder = datetime.now().strftime("%Y%m%d")
+    device_folder = config.download_dir / date_folder
 
     # Check and create the download directory explicitly
     if not device_folder.exists():
@@ -357,7 +429,7 @@ def download_device_screenshots(page: Page, device_name: str, downloaded_filenam
                 logger.warning(f"Page {page_num} Row {row_idx + 1}: Could not click download icon: {e}")
                 continue
 
-            count = _download_from_modal(page, device_folder, row_idx)
+            count = _download_from_modal(page, device_folder, device_name, row_idx)
             total_downloaded += count
 
             _close_modal(page)

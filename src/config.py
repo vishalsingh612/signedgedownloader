@@ -66,7 +66,13 @@ class AppConfig:
         # Paths config - resolve to absolute paths relative to project root
         paths = self._data.get("paths", {})
         self.excel_path = self.project_root / paths.get("excel_path", "config/devices.xlsx")
-        self.download_dir = self.project_root / paths.get("download_dir", "downloads")
+        dl_path = paths.get("download_dir", "downloads")
+        if str(dl_path).startswith("~"):
+            self.download_dir = Path(dl_path).expanduser()
+        elif Path(dl_path).is_absolute():
+            self.download_dir = Path(dl_path)
+        else:
+            self.download_dir = self.project_root / dl_path
         self.browser_profile_dir = self.project_root / paths.get("browser_profile_dir", "browser_profile")
         self.checkpoint_dir = self.project_root / paths.get("checkpoint_dir", "checkpoints")
         self.log_dir = self.project_root / paths.get("log_dir", "logs")
