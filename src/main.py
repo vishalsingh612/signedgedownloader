@@ -137,6 +137,27 @@ def run_downloader_job(force: bool = False):
         except Exception as ne:
             logger.error(f"Failed to send job completed notification email: {ne}")
 
+        # Copy to Google Drive if configured
+        if config.gdrive_sync_dir:
+            try:
+                import shutil
+                date_folder_name = datetime.now().strftime("%Y%m%d")
+                source_folder = config.download_dir / date_folder_name
+                
+                if source_folder.exists():
+                    dest_folder = config.gdrive_sync_dir / date_folder_name
+                    logger.info(f"Syncing downloads to Google Drive: {dest_folder}")
+                    
+                    if not dest_folder.exists():
+                        shutil.copytree(source_folder, dest_folder)
+                        logger.info("Successfully copied folder to Google Drive.")
+                    else:
+                        logger.info("Google Drive destination already exists. Copying new files...")
+                        shutil.copytree(source_folder, dest_folder, dirs_exist_ok=True)
+                        logger.info("Successfully synced new files to Google Drive.")
+            except Exception as ge:
+                logger.error(f"Failed to copy files to Google Drive: {ge}")
+
         logger.info(f"===== Daily Screenshot Downloader Job Finished successfully in {duration_str} =====")
 
     except Exception as e:

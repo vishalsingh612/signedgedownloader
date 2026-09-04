@@ -73,6 +73,17 @@ class AppConfig:
             self.download_dir = Path(dl_path)
         else:
             self.download_dir = self.project_root / dl_path
+            
+        self.gdrive_sync_dir = None
+        gdrive_path = paths.get("gdrive_sync_dir", "")
+        if gdrive_path:
+            if str(gdrive_path).startswith("~"):
+                self.gdrive_sync_dir = Path(gdrive_path).expanduser()
+            elif Path(gdrive_path).is_absolute():
+                self.gdrive_sync_dir = Path(gdrive_path)
+            else:
+                self.gdrive_sync_dir = self.project_root / gdrive_path
+
         self.browser_profile_dir = self.project_root / paths.get("browser_profile_dir", "browser_profile")
         self.checkpoint_dir = self.project_root / paths.get("checkpoint_dir", "checkpoints")
         self.log_dir = self.project_root / paths.get("log_dir", "logs")

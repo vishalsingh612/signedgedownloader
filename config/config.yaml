@@ -21,6 +21,7 @@ paths:
   browser_profile_dir: browser_profile
   checkpoint_dir: checkpoints
   download_dir: '~/Desktop/downloads'
+  gdrive_sync_dir: ''  # Set this to your Google Drive Desktop folder path (e.g. /Volumes/GoogleDrive/Shared drives/... or G:\Shared drives\...)
   email_templates_dir: templates/emails
   excel_path: config/devices.xlsx
   log_dir: logs
