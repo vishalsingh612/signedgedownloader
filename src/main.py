@@ -223,12 +223,13 @@ def main():
     parser = argparse.ArgumentParser(description="Panasonic Signedge Campaign Screenshot Downloader")
     parser.add_argument("--now", action="store_true", help="Run the download job immediately, then exit.")
     parser.add_argument("--schedule", action="store_true", help="Start the daily background scheduler.")
+    parser.add_argument("--force", action="store_true", help="Force run even on Sundays (overrides Sunday exclusion).")
     
     args = parser.parse_args()
     
     if args.now:
         logger.info("Command line flag --now passed. Running job immediately.")
-        run_downloader_job(force=True)
+        run_downloader_job(force=args.force)
     elif args.schedule:
         logger.info("Command line flag --schedule passed. Starting scheduler.")
         start_scheduler(run_downloader_job)
@@ -239,7 +240,7 @@ def main():
             start_scheduler(run_downloader_job)
         else:
             logger.info("Scheduler disabled in config.yaml. Running job immediately.")
-            run_downloader_job(force=True)
+            run_downloader_job(force=args.force)
 
 if __name__ == "__main__":
     main()
