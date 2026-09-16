@@ -237,7 +237,7 @@ def _download_all_from_modal(page: Page, device_folder: Path, device_name: str, 
         log_download(safe_device_name, f"download_all_row{row_index+1}", "FAILED", duration, str(e))
         return 0
 
-def download_device_screenshots(page: Page, device_name: str, downloaded_filenames: list) -> int:
+def download_device_screenshots(page: Page, device_name: str, downloaded_filenames: list, target_date: str = None) -> int:
     """
     For each result row across all pages:
       1. Clicks the blue download icon → SnapShots modal opens
@@ -253,6 +253,14 @@ def download_device_screenshots(page: Page, device_name: str, downloaded_filenam
 
     folder_name = _sanitize_folder_name(device_name)
     date_folder = datetime.now().strftime("%Y%m%d")
+    if target_date:
+        clean_td = str(target_date).strip()
+        if len(clean_td) == 8 and clean_td.isdigit():
+            # If DDMMYYYY format, convert to YYYYMMDD
+            if int(clean_td[:2]) <= 31 and int(clean_td[2:4]) <= 12:
+                date_folder = f"{clean_td[4:]}{clean_td[2:4]}{clean_td[:2]}"
+            else:
+                date_folder = clean_td
     device_folder = config.download_dir / date_folder
 
     # Check and create the download directory explicitly

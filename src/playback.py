@@ -97,7 +97,7 @@ def process_devices(page: Page, campaign_name: str, date_ddmmyyyy: str) -> dict:
 
             
             # Download screenshots
-            downloaded = download_device_screenshots(page, device, downloaded_images)
+            downloaded = download_device_screenshots(page, device, downloaded_images, target_date=date_ddmmyyyy)
             total_images_downloaded += downloaded
             
             # Mark completed
