@@ -44,9 +44,21 @@ def _download_from_modal(page: Page, device_folder: Path, device_name: str, row_
     # Wait for modal to fully render
     try:
         page.wait_for_selector(modal_sel, timeout=10000)
-        page.wait_for_timeout(800)
-    except Exception:
-        logger.warning(f"SnapShots modal did not appear for row {row_index + 1}.")
+        # Wait for images in the modal to finish loading (or failing)
+        page.evaluate("""(sel) => {
+            const modal = document.querySelector(sel);
+            if (!modal) return Promise.resolve();
+            return Promise.all(Array.from(modal.querySelectorAll('img')).map(img => {
+                if (img.complete) return Promise.resolve();
+                return new Promise(resolve => {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                });
+            }));
+        }""", modal_sel)
+        page.wait_for_timeout(500)
+    except Exception as e:
+        logger.warning(f"SnapShots modal did not appear or images failed to load for row {row_index + 1}: {e}")
         return 0
 
     # Find all individual 'Download' buttons in the modal
@@ -58,12 +70,33 @@ def _download_from_modal(page: Page, device_folder: Path, device_name: str, row_
     # Collect only buttons whose exact text is "Download" (not "Download All")
     download_btn_indices = []
     for i in range(btn_count):
-        btn_text = all_btns.nth(i).inner_text().strip()
+        btn_locator = all_btns.nth(i)
+        btn_text = btn_locator.inner_text().strip()
         if btn_text == "Download":
+            # Check if the associated image is broken
+            is_broken = btn_locator.evaluate("""(button) => {
+                let el = button;
+                let img = null;
+                for (let j = 0; j < 4; j++) {
+                    el = el.parentElement;
+                    if (!el) break;
+                    img = el.querySelector('img');
+                    if (img) break;
+                }
+                if (img) {
+                    return img.complete && (img.naturalWidth === 0 || img.naturalHeight === 0);
+                }
+                return false;
+            }""")
+            
+            if is_broken:
+                logger.info(f"  ✗ Skipping broken/unsupported image {i+1} in modal.")
+                continue
+                
             download_btn_indices.append(i)
 
     if not download_btn_indices:
-        logger.warning(f"No individual 'Download' buttons in modal for row {row_index + 1}. Trying 'Download All'...")
+        logger.warning(f"No valid individual 'Download' buttons in modal for row {row_index + 1}. Trying 'Download All'...")
         return _download_all_from_modal(page, device_folder, device_name, row_index)
 
     logger.info(f"Row {row_index + 1}: {len(download_btn_indices)} image(s) in SnapShots modal.")
