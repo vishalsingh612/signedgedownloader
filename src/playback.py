@@ -65,6 +65,18 @@ def process_devices(page: Page, campaign_name: str, date_ddmmyyyy: str) -> dict:
     for idx, device in enumerate(remaining_devices):
         logger.info(f"--- Processing device ({idx+1}/{len(remaining_devices)}): '{device}' ---")
         
+        # Check if browser is still alive and healthy; auto-recover if closed/crashed
+        from src.browser import browser_manager
+        if not page or page.is_closed():
+            logger.warning("Browser page/context is closed or crashed. Recovering browser session...")
+            try:
+                page = browser_manager.restart()
+                login(page)
+                navigate_to_content_playback(page)
+                select_search_filters(page, campaign_name)
+            except Exception as rst_e:
+                logger.error(f"Failed to auto-recover browser before device '{device}': {rst_e}")
+
         # Check session status before starting each device
         if not is_logged_in(page):
             logger.warning("Session expired or invalid. Triggering pause/login notifier...")
@@ -115,13 +127,23 @@ def process_devices(page: Page, campaign_name: str, date_ddmmyyyy: str) -> dict:
             logger.error(f"Error processing device '{device}': {err_msg}")
             logger.debug(traceback.format_exc())
             
-            # Capture failure screenshot
-            screenshot_path = config.screenshot_dir / f"fail_device_{device}.png"
-            try:
-                page.screenshot(path=str(screenshot_path))
-                logger.info(f"Error screenshot saved to {screenshot_path}")
-            except Exception as se:
-                logger.warning(f"Could not save failure screenshot: {se}")
+            # Check if browser died during processing
+            is_browser_dead = (page is None or page.is_closed() or "Target page, context or browser has been closed" in err_msg)
+            if is_browser_dead:
+                logger.warning("Browser was closed/crashed during device download. Restarting browser context...")
+                try:
+                    page = browser_manager.restart()
+                    login(page)
+                except Exception as rec_err:
+                    logger.error(f"Failed to restart browser after crash: {rec_err}")
+            else:
+                # Capture failure screenshot if browser is open
+                screenshot_path = config.screenshot_dir / f"fail_device_{device}.png"
+                try:
+                    page.screenshot(path=str(screenshot_path))
+                    logger.info(f"Error screenshot saved to {screenshot_path}")
+                except Exception as se:
+                    logger.warning(f"Could not save failure screenshot: {se}")
 
             # Mark as failed in checkpoint and move to next device
             checkpoint_manager.mark_device_failed(device, err_msg)
@@ -129,8 +151,9 @@ def process_devices(page: Page, campaign_name: str, date_ddmmyyyy: str) -> dict:
             
             # Attempt to reset/navigate back to reports page to restore state for next device
             try:
-                navigate_to_content_playback(page)
-                select_search_filters(page, campaign_name)
+                if not page.is_closed():
+                    navigate_to_content_playback(page)
+                    select_search_filters(page, campaign_name)
             except Exception as re:
                 logger.error(f"Failed to reset/navigate back after device failure: {re}")
 

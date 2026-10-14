@@ -6,19 +6,27 @@ from src.notifier import notifier
 
 def is_logged_in(page: Page) -> bool:
     """Checks if the user is currently logged in by looking for dashboard/profile elements."""
+    if not page:
+        return False
+    try:
+        if page.is_closed():
+            return False
+    except Exception:
+        return False
+
     dashboard_sel = config.selectors["login"]["dashboard_indicator"]
     email_sel = config.selectors["login"]["email_input"]
     password_sel = config.selectors["login"]["password_input"]
     try:
         # Give a small buffer for page to stabilize
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(1000)
         
         # If the login inputs are visible, we are definitely NOT logged in!
-        if page.locator(email_sel).is_visible() or page.locator(password_sel).is_visible():
+        if page.locator(email_sel).first.is_visible() or page.locator(password_sel).first.is_visible():
             return False
             
         # Check if dashboard selector (logout link, user profile) is visible
-        if page.locator(dashboard_sel).is_visible():
+        if page.locator(dashboard_sel).first.is_visible():
             return True
             
         # Fallback URL check
@@ -28,7 +36,7 @@ def is_logged_in(page: Page) -> bool:
             
         if "login" not in url_lower and ("dashboard" in url_lower or "home" in url_lower or "customer" in url_lower or "playback" in url_lower):
             # Verify we aren't still at the login screen
-            if not page.locator(email_sel).is_visible():
+            if not page.locator(email_sel).first.is_visible():
                 return True
                 
         return False
@@ -42,6 +50,9 @@ def login(page: Page) -> bool:
     If session is active, the portal redirects to the dashboard, and we skip login.
     If session is not active, we proceed to fill credentials and log in.
     """
+    if not page or page.is_closed():
+        raise Exception("Browser page is closed. Cannot perform login.")
+
     login_url = config.portal_url
     logger.info(f"Checking session by navigating directly to login page: {login_url}")
     try:
@@ -56,6 +67,9 @@ def login(page: Page) -> bool:
     except Exception:
         pass
     
+    if page.is_closed():
+        raise Exception("Browser page closed during navigation to login page.")
+
     url_lower = page.url.lower()
     email_sel = config.selectors["login"]["email_input"]
     password_sel = config.selectors["login"]["password_input"]
@@ -68,8 +82,13 @@ def login(page: Page) -> bool:
     )
     
     # Or if the dashboard indicator is visible and login fields are not
-    has_dashboard_element = page.locator(dashboard_sel).count() > 0 and page.locator(dashboard_sel).first.is_visible()
-    has_login_fields = page.locator(email_sel).is_visible() or page.locator(password_sel).is_visible()
+    has_dashboard_element = False
+    has_login_fields = False
+    try:
+        has_dashboard_element = page.locator(dashboard_sel).count() > 0 and page.locator(dashboard_sel).first.is_visible()
+        has_login_fields = page.locator(email_sel).first.is_visible() or page.locator(password_sel).first.is_visible()
+    except Exception:
+        pass
     
     if (is_logged_in_redirect or has_dashboard_element) and not has_login_fields:
         logger.info("Existing valid session detected (redirected away from login). Login skipped.")

@@ -115,6 +115,13 @@ def _download_from_modal(page: Page, device_folder: Path, device_name: str, row_
                 btn.click()
             download = dl_info.value
             
+            fail_reason = download.failure()
+            if fail_reason:
+                duration = time.time() - start_time
+                logger.warning(f"  ✗ Download stream failed on portal side ({fail_reason}) ({duration:.1f}s)")
+                log_download(safe_device_name, f"row{row_index+1}_img{btn_idx+1}", "FAILED", duration, str(fail_reason))
+                continue
+            
             ext = ".jpg"
             suggested = download.suggested_filename
             if suggested and "." in suggested:
@@ -215,6 +222,13 @@ def _download_all_from_modal(page: Page, device_folder: Path, device_name: str, 
         with page.expect_download(timeout=config.timeout_ms) as dl_info:
             dl_all_btn.click()
         download = dl_info.value
+        
+        fail_reason = download.failure()
+        if fail_reason:
+            duration = time.time() - start_time
+            logger.warning(f"  ✗ 'Download All' stream failed on portal side ({fail_reason}) ({duration:.1f}s)")
+            log_download(safe_device_name, f"download_all_row{row_index+1}", "FAILED", duration, str(fail_reason))
+            return 0
         
         ext = ".zip"
         suggested = download.suggested_filename

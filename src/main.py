@@ -87,6 +87,9 @@ def run_downloader_job(force: bool = False):
         for idx, campaign in enumerate(campaigns):
             logger.info(f"===== Processing Campaign ({idx+1}/{len(campaigns)}): '{campaign}' =====")
             
+            # Ensure active page reference
+            page = browser_manager.page or page
+
             # Navigate to Playback Reports page
             navigate_to_content_playback(page)
             
