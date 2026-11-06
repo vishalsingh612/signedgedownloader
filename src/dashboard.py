@@ -37,7 +37,7 @@ def get_configured_port() -> int:
                         return int(val)
         except Exception:
             pass
-    return 8000
+    return 8002
 
 PORT = get_configured_port()
 
