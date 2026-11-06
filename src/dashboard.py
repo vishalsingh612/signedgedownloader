@@ -21,7 +21,25 @@ DOWNLOADS_CSV_PATH = LOG_DIR / "downloads.csv"
 DEVICES_EXCEL_PATH = WORKSPACE_DIR / "config" / "devices.xlsx"
 ENV_PATH = WORKSPACE_DIR / ".env"
 
-PORT = int(os.environ.get("PORT", 8000))
+def get_configured_port() -> int:
+    if "PORT" in os.environ:
+        try:
+            return int(os.environ["PORT"])
+        except ValueError:
+            pass
+    if ENV_PATH.exists():
+        try:
+            with open(ENV_PATH, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("PORT=") or line.startswith("DASHBOARD_PORT="):
+                        val = line.split("=", 1)[1].strip().strip("'").strip('"')
+                        return int(val)
+        except Exception:
+            pass
+    return 8000
+
+PORT = get_configured_port()
 
 # Background manual job runner state
 job_running = False
@@ -1706,6 +1724,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 class SafeHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
     def handle_error(self, request, client_address):
         # Ignore common client-closed connection socket exceptions to prevent terminal clutter
         import sys
@@ -1713,6 +1733,32 @@ class SafeHTTPServer(ThreadingHTTPServer):
         if exc_type in (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             return
         super().handle_error(request, client_address)
+
+def bind_server(preferred_port: int, max_attempts: int = 10):
+    """
+    Attempts to bind SafeHTTPServer.
+    Tries 0.0.0.0 ('') and 127.0.0.1 on preferred_port.
+    If blocked by permissions (WinError 10013) or port in use,
+    automatically tries fallback ports (e.g. 8001, 8002...).
+    """
+    last_error = None
+    candidate_ports = [preferred_port] + [
+        preferred_port + i for i in range(1, max_attempts + 1)
+    ]
+    
+    for port in candidate_ports:
+        for host in ["", "127.0.0.1"]:
+            try:
+                server = SafeHTTPServer((host, port), DashboardHandler)
+                if port != preferred_port:
+                    print(f"⚠️ Preferred port {preferred_port} was unavailable ({last_error}).")
+                    print(f"✅ Successfully bound dashboard to port {port}.")
+                return server, host, port
+            except (PermissionError, OSError) as e:
+                last_error = e
+                continue
+
+    raise last_error
 
 global_scheduler = None
 
@@ -1775,13 +1821,29 @@ def start_background_scheduler():
         print(f"[SCHEDULER] Error starting background scheduler: {e}")
 
 def run_server():
-    # Start background scheduler
+    port = get_configured_port()
+    try:
+        httpd, bound_host, bound_port = bind_server(port)
+    except Exception as e:
+        print(f"\n==================================================================")
+        print(f"❌ [ERROR] Could not start dashboard server: {e}")
+        print(f"==================================================================")
+        print(f"💡 Common fixes for Windows PermissionError [WinError 10013]:")
+        print(f"   1. Another instance of Python / Dashboard is already running:")
+        print(f"      Run in CMD:  netstat -ano | findstr :{port}")
+        print(f"      Kill PID:    taskkill /PID <PID> /F")
+        print(f"   2. Port {port} is in Windows Hyper-V / WSL reserved range:")
+        print(f"      Add 'PORT=8085' in your .env file or set environment variable PORT=8085")
+        print(f"   3. Try running Command Prompt / PowerShell as Administrator.")
+        print(f"==================================================================")
+        return
+
+    # Start background scheduler only after successfully binding the server
     start_background_scheduler()
     
-    server_address = ('', PORT)
-    httpd = SafeHTTPServer(server_address, DashboardHandler)
+    display_host = "localhost" if bound_host in ("", "0.0.0.0") else bound_host
     print(f"==================================================================")
-    print(f"🚀 Dashboard is running live on: http://localhost:{PORT}")
+    print(f"🚀 Dashboard is running live on: http://{display_host}:{bound_port}")
     print(f"📌 Accessible from your browser. Press Ctrl+C to terminate.")
     print(f"==================================================================")
     try:
